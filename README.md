@@ -27,15 +27,15 @@ La propuesta consiste en centralizar estas operaciones en una única aplicación
 
 ### Frontend
 
-**React + JavaScript + HTML + CSS**
+**React + TypeScript + HTML + CSS**
 
 Se utilizará React debido a que el equipo cuenta con experiencia previa con esta tecnología adquirida durante la tecnicatura, permitiendo reducir la curva de aprendizaje y optimizar los tiempos de desarrollo.
 
 ### Backend
 
-**Node.js + Express**
+**Node.js + Express + TypeScript**
 
-Se utilizará JavaScript tanto en frontend como en backend, facilitando el desarrollo y mantenimiento del proyecto. Express permitirá implementar la API y organizar las rutas y la lógica de negocio.
+Se utilizará TypeScript tanto en frontend como en backend, facilitando el desarrollo y mantenimiento del proyecto. Express permitirá implementar la API y organizar las rutas y la lógica de negocio.
 
 ### Base de datos
 
