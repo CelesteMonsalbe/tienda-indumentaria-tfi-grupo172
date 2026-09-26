@@ -1,0 +1,144 @@
+// =========================================================
+// Sistema de gestión — Tienda de indumentaria
+// Modelo de datos (DBML) — pegar directo en https://dbdiagram.io
+// =========================================================
+
+Enum rol_usuario {
+  administrador
+  operativo
+}
+
+Enum tipo_movimiento {
+  ingreso
+  venta
+  reserva
+  confirmacion_pedido
+  ajuste
+}
+
+Enum estado_ajuste {
+  pendiente
+  resuelto
+}
+
+Enum estado_pedido {
+  pendiente
+  confirmado
+  despachado
+  entregado
+  cancelado
+}
+
+Table usuario {
+  id serial [pk]
+  nombre varchar(100) [not null]
+  email varchar(150) [not null, unique]
+  password_hash varchar(255) [not null]
+  rol rol_usuario [not null]
+  creado_en timestamp [not null, default: `now()`]
+}
+
+Table producto {
+  id serial [pk]
+  nombre varchar(150) [not null]
+  descripcion text
+  precio_venta decimal(10,2) [not null]
+  creado_en timestamp [not null, default: `now()`]
+}
+
+Table variante {
+  id serial [pk]
+  producto_id integer [not null, ref: > producto.id]
+  talle varchar(20)
+  color varchar(40)
+  cantidad_disponible integer [not null, default: 0]
+  cantidad_reservada integer [not null, default: 0]
+  cantidad_fallada integer [not null, default: 0]
+  descripcion_falla text
+
+  indexes {
+    (producto_id, talle, color) [unique]
+  }
+
+  Note: 'Además, en schema.sql se agrega un índice único parcial sobre producto_id, solo para el caso en que talle y color son ambos nulos (productos sin variantes), ya que DBML no admite índices parciales.'
+}
+
+Table cliente {
+  id serial [pk]
+  nombre varchar(150) [not null]
+  cuit varchar(15)
+  contacto varchar(150)
+  direccion_envio text
+  creado_en timestamp [not null, default: `now()`]
+}
+
+Table proveedor {
+  id serial [pk]
+  nombre varchar(150) [not null]
+  contacto varchar(150)
+}
+
+Table venta {
+  id serial [pk]
+  fecha timestamp [not null, default: `now()`]
+  cliente_id integer [ref: > cliente.id]
+  total decimal(10,2) [not null]
+  descuento decimal(10,2) [not null, default: 0]
+  usuario_id integer [not null, ref: > usuario.id]
+}
+
+Table venta_item {
+  id serial [pk]
+  venta_id integer [not null, ref: > venta.id]
+  variante_id integer [not null, ref: > variante.id]
+  cantidad integer [not null]
+  precio_unitario_aplicado decimal(10,2) [not null]
+}
+
+Table pedido {
+  id serial [pk]
+  cliente_id integer [not null, ref: > cliente.id]
+  fecha timestamp [not null, default: `now()`]
+  estado estado_pedido [not null, default: 'pendiente']
+  direccion_envio text [note: 'copia de la dirección del cliente al momento del pedido']
+  numero_seguimiento varchar(100)
+  monto_sena decimal(10,2) [not null, default: 0]
+  saldo_pendiente decimal(10,2) [not null, default: 0]
+}
+
+Table pedido_item {
+  id serial [pk]
+  pedido_id integer [not null, ref: > pedido.id]
+  variante_id integer [not null, ref: > variante.id]
+  cantidad integer [not null]
+  precio_unitario_aplicado decimal(10,2) [not null]
+}
+
+Table ingreso {
+  id serial [pk]
+  proveedor_id integer [not null, ref: > proveedor.id]
+  fecha timestamp [not null, default: `now()`]
+  usuario_id integer [not null, ref: > usuario.id]
+}
+
+Table ingreso_item {
+  id serial [pk]
+  ingreso_id integer [not null, ref: > ingreso.id]
+  variante_id integer [not null, ref: > variante.id]
+  cantidad_recibida integer [not null]
+  cantidad_fallada integer [not null, default: 0]
+  precio_compra decimal(10,2) [not null]
+}
+
+Table movimiento_stock {
+  id serial [pk]
+  variante_id integer [not null, ref: > variante.id]
+  tipo tipo_movimiento [not null]
+  cantidad integer [not null]
+  fecha timestamp [not null, default: `now()`]
+  motivo text
+  estado estado_ajuste [note: 'solo aplica cuando tipo = ajuste']
+  usuario_id integer [not null, ref: > usuario.id]
+  referencia_tipo varchar(20) [note: 'venta | pedido | ingreso — referencia informativa, sin FK real']
+  referencia_id integer
+}
