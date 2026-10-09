@@ -1,11 +1,13 @@
 -- =========================================================
 -- Sistema de gestión — Tienda de indumentaria
--- Esquema de base de datos (PostgreSQL 14+)
+-- Esquema de base de datos (PostgreSQL 15+)
 -- =========================================================
 
 -- ---------- Tipos enumerados ----------
 CREATE TYPE rol_usuario AS ENUM ('administrador', 'operativo');
-CREATE TYPE tipo_movimiento AS ENUM ('ingreso', 'venta', 'reserva', 'confirmacion_pedido', 'ajuste');
+CREATE TYPE tipo_movimiento AS ENUM ('ingreso', 'venta', 'reserva', 'liberacion', 'confirmacion_pedido', 'ajuste', 'falla');
+-- Contador de stock de una variante: de cuál sale (o a cuál se suma) una cantidad.
+CREATE TYPE origen_stock AS ENUM ('disponible', 'reservado', 'fallado');
 CREATE TYPE estado_ajuste AS ENUM ('pendiente', 'resuelto');
 CREATE TYPE estado_pedido AS ENUM ('pendiente', 'confirmado', 'despachado', 'entregado', 'cancelado');
 
@@ -25,19 +27,22 @@ CREATE TABLE producto (
   nombre        VARCHAR(150) NOT NULL,
   descripcion   TEXT,
   precio_venta  NUMERIC(10,2) NOT NULL CHECK (precio_venta >= 0),
+  activo        BOOLEAN NOT NULL DEFAULT TRUE,   -- baja lógica: nunca se borra un producto con historial
   creado_en     TIMESTAMP NOT NULL DEFAULT now()
 );
 
 CREATE TABLE variante (
   id                   SERIAL PRIMARY KEY,
-  producto_id          INTEGER NOT NULL REFERENCES producto(id) ON DELETE CASCADE,
-  talle                VARCHAR(20),
-  color                VARCHAR(40),
+  producto_id          INTEGER NOT NULL REFERENCES producto(id),   -- sin CASCADE: no se borran productos con historial
+  talle                VARCHAR(20) CHECK (talle <> ''),             -- NULL = producto sin talle (no se admite cadena vacía)
+  color                VARCHAR(40) CHECK (color <> ''),             -- NULL = producto sin color
   cantidad_disponible  INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_disponible >= 0),
   cantidad_reservada   INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_reservada >= 0),
   cantidad_fallada     INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_fallada >= 0),
-  descripcion_falla    TEXT,
-  UNIQUE (producto_id, talle, color)
+  activo               BOOLEAN NOT NULL DEFAULT TRUE,               -- baja lógica
+  -- NULLS NOT DISTINCT: dos NULL se consideran iguales, así que tampoco puede haber
+  -- dos variantes "Negro" sin talle, ni dos variantes sin talle ni color, del mismo producto.
+  UNIQUE NULLS NOT DISTINCT (producto_id, talle, color)
 );
 
 -- ---------- Cliente y Proveedor ----------
@@ -71,7 +76,9 @@ CREATE TABLE venta_item (
   venta_id                  INTEGER NOT NULL REFERENCES venta(id) ON DELETE CASCADE,
   variante_id               INTEGER NOT NULL REFERENCES variante(id),
   cantidad                  INTEGER NOT NULL CHECK (cantidad > 0),
-  precio_unitario_aplicado  NUMERIC(10,2) NOT NULL CHECK (precio_unitario_aplicado >= 0)
+  precio_unitario_aplicado  NUMERIC(10,2) NOT NULL CHECK (precio_unitario_aplicado >= 0),
+  -- De qué contador sale la unidad vendida (venta normal vs. oferta de stock fallado)
+  origen                    origen_stock NOT NULL DEFAULT 'disponible' CHECK (origen IN ('disponible', 'fallado'))
 );
 
 -- ---------- Pedido (mayorista) ----------
@@ -118,8 +125,9 @@ CREATE TABLE movimiento_stock (
   tipo             tipo_movimiento NOT NULL,
   cantidad         INTEGER NOT NULL,          -- siempre positiva, excepto en 'ajuste' (donde el signo indica sobrante/faltante)
   fecha            TIMESTAMP NOT NULL DEFAULT now(),
-  motivo           TEXT,
+  motivo           TEXT,                       -- en 'ajuste' y 'falla': explica el caso (ej. descripción de la falla)
   estado           estado_ajuste,             -- solo aplica cuando tipo = 'ajuste'
+  origen           origen_stock NOT NULL DEFAULT 'disponible', -- contador de stock principal afectado (en 'venta': de dónde sale la unidad)
   usuario_id       INTEGER NOT NULL REFERENCES usuario(id),
   referencia_tipo  VARCHAR(20),                -- 'venta' | 'pedido' | 'ingreso' (referencia informativa)
   referencia_id    INTEGER
@@ -133,10 +141,3 @@ CREATE INDEX idx_pedido_item_pedido    ON pedido_item(pedido_id);
 CREATE INDEX idx_ingreso_item_ingreso  ON ingreso_item(ingreso_id);
 CREATE INDEX idx_pedido_cliente        ON pedido(cliente_id);
 CREATE INDEX idx_venta_cliente         ON venta(cliente_id);
-
--- Evita dos variantes "vacías" (sin talle ni color) para el mismo producto,
--- caso no cubierto por el UNIQUE(producto_id, talle, color) ya que NULL
--- nunca se considera igual a otro NULL.
-CREATE UNIQUE INDEX idx_variante_sin_talle_color
-  ON variante (producto_id)
-  WHERE talle IS NULL AND color IS NULL;

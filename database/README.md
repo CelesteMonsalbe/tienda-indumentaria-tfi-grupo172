@@ -1,7 +1,7 @@
 # Base de datos — Sistema de gestión para tienda de indumentaria
 
 ## Requisitos
-- PostgreSQL 14 o superior.
+- PostgreSQL 15 o superior (el esquema usa `UNIQUE NULLS NOT DISTINCT`).
 
 ## Instalación local
 
