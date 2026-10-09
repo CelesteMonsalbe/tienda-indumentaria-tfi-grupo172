@@ -38,6 +38,7 @@ erDiagram
         varchar_150 nombre
         text descripcion
         numeric_10_2 precio_venta
+        boolean activo
         timestamp creado_en
     }
 
@@ -49,7 +50,7 @@ erDiagram
         int cantidad_disponible
         int cantidad_reservada
         int cantidad_fallada
-        text descripcion_falla
+        boolean activo
     }
 
     CLIENTE {
@@ -82,6 +83,7 @@ erDiagram
         int variante_id FK
         int cantidad
         numeric_10_2 precio_unitario_aplicado
+        origen_stock origen
     }
 
     PEDIDO {
@@ -127,6 +129,7 @@ erDiagram
         timestamp fecha
         text motivo
         estado_ajuste estado
+        origen_stock origen
         int usuario_id FK
         varchar_20 referencia_tipo
         int referencia_id
@@ -154,7 +157,7 @@ propias.
 agrupa lo recibido de un proveedor, con precio de compra por ítem.
 
 **Trazabilidad** — `MOVIMIENTO_STOCK`: historial de todo cambio de stock
-(ingreso, venta, reserva, confirmación de pedido, ajuste).
+(ingreso, venta, reserva, liberación, confirmación de pedido, ajuste, falla).
 
 **Usuarios** — `USUARIO`: dos roles (administrador / operativo); los
 permisos se validan en el backend, no en la base.
@@ -176,9 +179,41 @@ permisos se validan en el backend, no en la base.
   unidades se movieron); el efecto lo determina `tipo`, no el signo. La
   única excepción es `ajuste`, donde el signo sí importa: positivo si sobró
   stock, negativo si faltó.
-- `variante` no admite dos filas idénticas para el mismo producto
-  (`UNIQUE(producto_id, talle, color)`), incluyendo el caso de productos sin
-  variantes (índice único parcial adicional en `schema.sql`).
+- `variante` no admite dos filas idénticas para el mismo producto:
+  `UNIQUE NULLS NOT DISTINCT (producto_id, talle, color)` hace que `NULL`
+  participe de la comparación (no puede haber dos variantes "Negro" sin
+  talle, ni dos variantes sin talle ni color). Talle y color no admiten
+  cadena vacía; la ausencia se representa con `NULL`.
+- Productos y variantes no se borran: se marcan `activo = false`. Las
+  claves foráneas no tienen `ON DELETE CASCADE`, por lo que la base rechaza
+  el borrado físico si existen operaciones históricas.
+- `origen` (disponible / reservado / fallado) indica de qué contador sale la
+  cantidad. En `venta_item` solo admite `disponible` o `fallado` (venta
+  normal vs. oferta de stock fallado); en `movimiento_stock` refleja el
+  contador principal afectado, así cada venta explica qué contador disminuyó.
+- La descripción de una falla ya no vive en `variante` (dos prendas de la
+  misma variante pueden tener fallas distintas): se registra en `motivo` de
+  cada movimiento de tipo `falla`.
+
+### Convención de `origen` en `movimiento_stock`
+
+`origen` se guarda una vez por movimiento y no se modifica: es la huella de
+qué contador de la variante cambió. Cada operación nueva crea un movimiento
+nuevo con su propio `origen`.
+
+| Tipo de movimiento | `origen` |
+|---|---|
+| `venta` | `disponible` o `fallado`, según de dónde salió la unidad |
+| `ingreso` | `disponible` |
+| `falla` | `fallado` |
+| `reserva` | `disponible` (sale de ahí y pasa a reservado) |
+| `liberacion` | `reservado` (sale de ahí y vuelve a disponible) |
+| `confirmacion_pedido` | `reservado` (egresa definitivamente) |
+| `ajuste` | el contador que se corrige |
+
+La base de datos no valida esta tabla (si no se indica, `origen` queda en
+`disponible`); respetarla es responsabilidad del backend y se verifica con
+tests.
 
 ## Archivos relacionados
 

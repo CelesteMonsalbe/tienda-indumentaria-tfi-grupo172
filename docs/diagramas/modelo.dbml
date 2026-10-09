@@ -12,8 +12,16 @@ Enum tipo_movimiento {
   ingreso
   venta
   reserva
+  liberacion
   confirmacion_pedido
   ajuste
+  falla
+}
+
+Enum origen_stock {
+  disponible
+  reservado
+  fallado
 }
 
 Enum estado_ajuste {
@@ -43,24 +51,23 @@ Table producto {
   nombre varchar(150) [not null]
   descripcion text
   precio_venta decimal(10,2) [not null]
+  activo boolean [not null, default: true]
   creado_en timestamp [not null, default: `now()`]
 }
 
 Table variante {
   id serial [pk]
   producto_id integer [not null, ref: > producto.id]
-  talle varchar(20)
-  color varchar(40)
+  talle varchar(20) [note: 'NULL = sin talle; no admite cadena vacía']
+  color varchar(40) [note: 'NULL = sin color; no admite cadena vacía']
   cantidad_disponible integer [not null, default: 0]
   cantidad_reservada integer [not null, default: 0]
   cantidad_fallada integer [not null, default: 0]
-  descripcion_falla text
+  activo boolean [not null, default: true]
 
   indexes {
-    (producto_id, talle, color) [unique]
+    (producto_id, talle, color) [unique, note: 'UNIQUE NULLS NOT DISTINCT: NULL participa de la comparación']
   }
-
-  Note: 'Además, en schema.sql se agrega un índice único parcial sobre producto_id, solo para el caso en que talle y color son ambos nulos (productos sin variantes), ya que DBML no admite índices parciales.'
 }
 
 Table cliente {
@@ -93,6 +100,7 @@ Table venta_item {
   variante_id integer [not null, ref: > variante.id]
   cantidad integer [not null]
   precio_unitario_aplicado decimal(10,2) [not null]
+  origen origen_stock [not null, default: 'disponible', note: 'solo disponible o fallado']
 }
 
 Table pedido {
@@ -138,6 +146,7 @@ Table movimiento_stock {
   fecha timestamp [not null, default: `now()`]
   motivo text
   estado estado_ajuste [note: 'solo aplica cuando tipo = ajuste']
+  origen origen_stock [not null, default: 'disponible', note: 'contador de stock principal afectado']
   usuario_id integer [not null, ref: > usuario.id]
   referencia_tipo varchar(20) [note: 'venta | pedido | ingreso — referencia informativa, sin FK real']
   referencia_id integer
