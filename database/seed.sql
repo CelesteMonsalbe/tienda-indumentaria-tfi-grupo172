@@ -37,12 +37,21 @@ INSERT INTO movimiento_stock (variante_id, tipo, cantidad, usuario_id, referenci
   (1, 'ingreso', 5, 1, 'ingreso', 1),
   (2, 'ingreso', 8, 1, 'ingreso', 1);
 
+-- Ingreso registrado por una vendedora, pendiente de costo (precio_compra NULL): variante 4 (pantalón 38 negro)
+INSERT INTO ingreso (proveedor_id, usuario_id) VALUES (1, 2);
+
+INSERT INTO ingreso_item (ingreso_id, variante_id, cantidad_recibida, cantidad_fallada, precio_compra) VALUES
+  (2, 4, 4, 0, NULL);
+
+INSERT INTO movimiento_stock (variante_id, tipo, cantidad, usuario_id, referencia_tipo, referencia_id) VALUES
+  (4, 'ingreso', 4, 2, 'ingreso', 2);
+
 -- Venta minorista de ejemplo (variante 1: talle S negro)
 INSERT INTO venta (cliente_id, total, descuento, usuario_id) VALUES
   (NULL, 8500.00, 0, 2);
 
-INSERT INTO venta_item (venta_id, variante_id, cantidad, precio_unitario_aplicado) VALUES
-  (1, 1, 1, 8500.00);
+INSERT INTO venta_item (venta_id, variante_id, cantidad, precio_unitario_aplicado, costo_unitario_aplicado) VALUES
+  (1, 1, 1, 8500.00, 4200.00);
 
 UPDATE variante SET cantidad_disponible = cantidad_disponible - 1 WHERE id = 1;
 
@@ -53,8 +62,8 @@ INSERT INTO movimiento_stock (variante_id, tipo, cantidad, usuario_id, referenci
 INSERT INTO cliente (nombre, cuit, contacto, direccion_envio) VALUES
   ('Boutique Rosario', '30-12345678-9', '341-555-1234', 'San Martín 1234, Rosario');
 
-INSERT INTO pedido (cliente_id, estado, direccion_envio, monto_sena, saldo_pendiente) VALUES
-  (1, 'pendiente', 'San Martín 1234, Rosario', 5000.00, 10000.00);
+INSERT INTO pedido (cliente_id, estado, direccion_envio, descuento) VALUES
+  (1, 'pendiente', 'San Martín 1234, Rosario', 0);
 
 INSERT INTO pedido_item (pedido_id, variante_id, cantidad, precio_unitario_aplicado) VALUES
   (1, 3, 3, 8500.00);
@@ -65,3 +74,11 @@ UPDATE variante
 
 INSERT INTO movimiento_stock (variante_id, tipo, cantidad, usuario_id, referencia_tipo, referencia_id) VALUES
   (3, 'reserva', 3, 1, 'pedido', 1);
+
+-- Seña del pedido (primer pago parcial): total 3 x 8500 = 25500; pagado 5000; saldo 20500 (se calcula en v_pedido_totales)
+INSERT INTO pago (pedido_id, monto, usuario_id) VALUES
+  (1, 5000.00, 1);
+
+-- Historia de estados del pedido
+INSERT INTO historial_estado_pedido (pedido_id, estado, usuario_id, motivo) VALUES
+  (1, 'pendiente', 1, 'Pedido creado');
