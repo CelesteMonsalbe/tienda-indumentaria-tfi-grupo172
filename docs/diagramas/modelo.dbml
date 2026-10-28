@@ -101,6 +101,7 @@ Table venta_item {
   cantidad integer [not null]
   precio_unitario_aplicado decimal(10,2) [not null]
   origen origen_stock [not null, default: 'disponible', note: 'solo disponible o fallado']
+  costo_unitario_aplicado decimal(10,2) [note: 'NULL si todavía no se cargó el costo']
 }
 
 Table pedido {
@@ -110,8 +111,26 @@ Table pedido {
   estado estado_pedido [not null, default: 'pendiente']
   direccion_envio text [note: 'copia de la dirección del cliente al momento del pedido']
   numero_seguimiento varchar(100)
-  monto_sena decimal(10,2) [not null, default: 0]
-  saldo_pendiente decimal(10,2) [not null, default: 0]
+  descuento decimal(10,2) [not null, default: 0]
+
+  Note: 'Total, pagado y saldo no se guardan: se calculan (suma de ítems - descuento; suma de pagos). Ver la vista v_pedido_totales en schema.sql.'
+}
+
+Table pago {
+  id serial [pk]
+  pedido_id integer [not null, ref: > pedido.id]
+  monto decimal(10,2) [not null, note: 'mayor a 0']
+  fecha timestamp [not null, default: `now()`]
+  usuario_id integer [not null, ref: > usuario.id]
+}
+
+Table historial_estado_pedido {
+  id serial [pk]
+  pedido_id integer [not null, ref: > pedido.id]
+  estado estado_pedido [not null]
+  fecha timestamp [not null, default: `now()`]
+  usuario_id integer [not null, ref: > usuario.id]
+  motivo text
 }
 
 Table pedido_item {
@@ -135,7 +154,7 @@ Table ingreso_item {
   variante_id integer [not null, ref: > variante.id]
   cantidad_recibida integer [not null]
   cantidad_fallada integer [not null, default: 0]
-  precio_compra decimal(10,2) [not null]
+  precio_compra decimal(10,2) [note: 'NULL = ingreso pendiente de costo']
 }
 
 Table movimiento_stock {

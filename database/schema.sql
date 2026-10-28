@@ -78,7 +78,9 @@ CREATE TABLE venta_item (
   cantidad                  INTEGER NOT NULL CHECK (cantidad > 0),
   precio_unitario_aplicado  NUMERIC(10,2) NOT NULL CHECK (precio_unitario_aplicado >= 0),
   -- De qué contador sale la unidad vendida (venta normal vs. oferta de stock fallado)
-  origen                    origen_stock NOT NULL DEFAULT 'disponible' CHECK (origen IN ('disponible', 'fallado'))
+  origen                    origen_stock NOT NULL DEFAULT 'disponible' CHECK (origen IN ('disponible', 'fallado')),
+  -- Costo de la unidad al momento de la venta (para el margen bruto). NULL si todavía no se cargó el costo.
+  costo_unitario_aplicado   NUMERIC(10,2) CHECK (costo_unitario_aplicado >= 0)
 );
 
 -- ---------- Pedido (mayorista) ----------
@@ -89,8 +91,8 @@ CREATE TABLE pedido (
   estado              estado_pedido NOT NULL DEFAULT 'pendiente',
   direccion_envio     TEXT,
   numero_seguimiento  VARCHAR(100),
-  monto_sena          NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (monto_sena >= 0),
-  saldo_pendiente     NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (saldo_pendiente >= 0)
+  descuento           NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (descuento >= 0)
+  -- Total, pagado y saldo NO se guardan: se calculan (ver vista v_pedido_totales).
 );
 
 CREATE TABLE pedido_item (
@@ -100,6 +102,38 @@ CREATE TABLE pedido_item (
   cantidad                  INTEGER NOT NULL CHECK (cantidad > 0),
   precio_unitario_aplicado  NUMERIC(10,2) NOT NULL CHECK (precio_unitario_aplicado >= 0)
 );
+
+-- Pagos de un pedido (la seña es el primer pago parcial). Un pedido puede tener varios.
+CREATE TABLE pago (
+  id          SERIAL PRIMARY KEY,
+  pedido_id   INTEGER NOT NULL REFERENCES pedido(id),
+  monto       NUMERIC(10,2) NOT NULL CHECK (monto > 0),
+  fecha       TIMESTAMP NOT NULL DEFAULT now(),
+  usuario_id  INTEGER NOT NULL REFERENCES usuario(id)
+);
+
+-- Historia de estados de un pedido: quién lo cambió, cuándo y por qué.
+CREATE TABLE historial_estado_pedido (
+  id          SERIAL PRIMARY KEY,
+  pedido_id   INTEGER NOT NULL REFERENCES pedido(id),
+  estado      estado_pedido NOT NULL,
+  fecha       TIMESTAMP NOT NULL DEFAULT now(),
+  usuario_id  INTEGER NOT NULL REFERENCES usuario(id),
+  motivo      TEXT
+);
+
+-- Total = suma de ítems - descuento; pagado = suma de pagos; saldo = total - pagado.
+CREATE VIEW v_pedido_totales AS
+SELECT
+  p.id                                                     AS pedido_id,
+  COALESCE(i.subtotal, 0) - p.descuento                    AS total,
+  COALESCE(g.pagado, 0)                                    AS total_pagado,
+  COALESCE(i.subtotal, 0) - p.descuento - COALESCE(g.pagado, 0) AS saldo
+FROM pedido p
+LEFT JOIN (SELECT pedido_id, SUM(cantidad * precio_unitario_aplicado) AS subtotal
+           FROM pedido_item GROUP BY pedido_id) i ON i.pedido_id = p.id
+LEFT JOIN (SELECT pedido_id, SUM(monto) AS pagado
+           FROM pago GROUP BY pedido_id) g ON g.pedido_id = p.id;
 
 -- ---------- Ingreso de mercadería ----------
 CREATE TABLE ingreso (
@@ -115,7 +149,8 @@ CREATE TABLE ingreso_item (
   variante_id         INTEGER NOT NULL REFERENCES variante(id),
   cantidad_recibida   INTEGER NOT NULL CHECK (cantidad_recibida >= 0),
   cantidad_fallada    INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_fallada >= 0),
-  precio_compra       NUMERIC(10,2) NOT NULL CHECK (precio_compra >= 0)
+  -- NULL = ingreso pendiente de costo: lo registra el perfil operativo y el administrador completa el precio.
+  precio_compra       NUMERIC(10,2) CHECK (precio_compra >= 0)
 );
 
 -- ---------- Movimiento de stock (trazabilidad) ----------
@@ -141,3 +176,5 @@ CREATE INDEX idx_pedido_item_pedido    ON pedido_item(pedido_id);
 CREATE INDEX idx_ingreso_item_ingreso  ON ingreso_item(ingreso_id);
 CREATE INDEX idx_pedido_cliente        ON pedido(cliente_id);
 CREATE INDEX idx_venta_cliente         ON venta(cliente_id);
+CREATE INDEX idx_pago_pedido           ON pago(pedido_id);
+CREATE INDEX idx_historial_pedido      ON historial_estado_pedido(pedido_id);

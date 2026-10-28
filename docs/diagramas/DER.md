@@ -18,11 +18,15 @@ erDiagram
     CLIENTE ||--o{ VENTA : "compra (opcional)"
     CLIENTE ||--o{ PEDIDO : realiza
     PEDIDO ||--o{ PEDIDO_ITEM : contiene
+    PEDIDO ||--o{ PAGO : recibe
+    PEDIDO ||--o{ HISTORIAL_ESTADO_PEDIDO : registra
     PROVEEDOR ||--o{ INGRESO : provee
     INGRESO ||--o{ INGRESO_ITEM : contiene
     USUARIO ||--o{ VENTA : registra
     USUARIO ||--o{ INGRESO : registra
     USUARIO ||--o{ MOVIMIENTO_STOCK : ejecuta
+    USUARIO ||--o{ PAGO : registra
+    USUARIO ||--o{ HISTORIAL_ESTADO_PEDIDO : ejecuta
 
     USUARIO {
         int id PK
@@ -84,6 +88,7 @@ erDiagram
         int cantidad
         numeric_10_2 precio_unitario_aplicado
         origen_stock origen
+        numeric_10_2 costo_unitario_aplicado
     }
 
     PEDIDO {
@@ -93,8 +98,24 @@ erDiagram
         estado_pedido estado
         text direccion_envio
         varchar_100 numero_seguimiento
-        numeric_10_2 monto_sena
-        numeric_10_2 saldo_pendiente
+        numeric_10_2 descuento
+    }
+
+    PAGO {
+        int id PK
+        int pedido_id FK
+        numeric_10_2 monto
+        timestamp fecha
+        int usuario_id FK
+    }
+
+    HISTORIAL_ESTADO_PEDIDO {
+        int id PK
+        int pedido_id FK
+        estado_pedido estado
+        timestamp fecha
+        int usuario_id FK
+        text motivo
     }
 
     PEDIDO_ITEM {
@@ -149,9 +170,10 @@ variante (talle/color) mantiene tres contadores de stock independientes
 **Ventas** — `VENTA`, `VENTA_ITEM`: venta de mostrador, cliente opcional
 (puede ser anónima).
 
-**Pedidos mayoristas** — `CLIENTE`, `PEDIDO`, `PEDIDO_ITEM`: el pedido
-reserva stock desde su creación; guarda seña, saldo y dirección de envío
-propias.
+**Pedidos mayoristas** — `CLIENTE`, `PEDIDO`, `PEDIDO_ITEM`, `PAGO`,
+`HISTORIAL_ESTADO_PEDIDO`: el pedido reserva stock desde su creación, guarda
+su dirección de envío y su descuento; los pagos (la seña es el primero) y la
+historia de estados se registran en tablas propias.
 
 **Abastecimiento** — `PROVEEDOR`, `INGRESO`, `INGRESO_ITEM`: cada ingreso
 agrupa lo recibido de un proveedor, con precio de compra por ítem.
@@ -194,6 +216,22 @@ permisos se validan en el backend, no en la base.
 - La descripción de una falla ya no vive en `variante` (dos prendas de la
   misma variante pueden tener fallas distintas): se registra en `motivo` de
   cada movimiento de tipo `falla`.
+
+- Un pedido no guarda total, pagado ni saldo: se calculan. `total` = suma
+  de ítems − `descuento`; `total_pagado` = suma de `pago`; `saldo` = total −
+  pagado. La vista `v_pedido_totales` lo expone, así el saldo nunca puede
+  quedar desalineado de los ítems y pagos.
+- `pago` registra cada pago parcial con fecha y usuario. La base no impide
+  que la suma de pagos supere el total: esa validación es del backend.
+- `historial_estado_pedido` conserva la secuencia de estados con fecha,
+  usuario y motivo; `pedido.estado` guarda solo el estado actual. Escribir el
+  historial en cada cambio de estado es responsabilidad del backend.
+- `ingreso_item.precio_compra` admite `NULL`: un ingreso con el costo sin
+  cargar queda "pendiente de costo". Lo registra el perfil operativo (solo
+  cantidades) y el administrador completa el precio.
+- `venta_item.costo_unitario_aplicado` guarda el costo de la unidad al momento
+  de la venta, para calcular el margen bruto. Puede ser `NULL` si el costo
+  todavía no estaba cargado; esas ventas quedan fuera del cálculo del margen.
 
 ### Convención de `origen` en `movimiento_stock`
 
